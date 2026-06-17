@@ -26,9 +26,8 @@ de que un cliente abandone el servicio.
 El usuario puede cargar una base de clientes en formato CSV y la aplicación devuelve:
 
 - Probabilidad de churn por cliente.
-- Predicción de churn.
 - Segmento de riesgo.
-- Acción sugerida de retención.
+- Acciones sugeridas de retención.
 - Archivo descargable con resultados.
 """)
 
@@ -50,7 +49,7 @@ try:
 except FileNotFoundError as e:
     st.error(
         "No se encontraron todos los archivos necesarios. "
-        "Asegúrate de subir al repositorio los siguientes archivos: "
+        "Asegúrate de subir al repositorio: "
         "`modelo_churn_random_forest.pkl`, `columnas_modelo_churn.pkl` y `scaler_churn.pkl`."
     )
     st.code(str(e))
@@ -76,14 +75,31 @@ def clasificar_riesgo(probabilidad):
 
 def asignar_accion(segmento):
     """
-    Asigna una acción comercial sugerida según el nivel de riesgo.
+    Asigna acciones de retención según el nivel de riesgo.
+    Las acciones están basadas en la estrategia de retención de la presentación.
     """
+
     acciones = {
-        "Bajo": "Comunicación general y monitoreo regular.",
-        "Medio": "Seguimiento preventivo y encuesta de satisfacción.",
-        "Alto": "Oferta personalizada, revisión de plan y beneficios adicionales.",
-        "Crítico": "Contacto prioritario del equipo de retención y propuesta comercial directa."
+        "Bajo": (
+            "Fidelización y cross-selling: programa de referidos con incentivos, "
+            "servicios premium a precio preferencial y reconocimiento de lealtad en aniversarios."
+        ),
+        "Medio": (
+            "Comunicación preventiva y engagement: newsletter con tips de uso del servicio, "
+            "invitación a eventos y beneficios exclusivos, y programa de puntos por antigüedad."
+        ),
+        "Alto": (
+            "Campaña de retención semi-personalizada: email/SMS con ofertas de servicios adicionales, "
+            "beneficios de contratos anuales vs. mensuales, 1 mes gratis de OnlineSecurity o TechSupport "
+            "y recordatorio de beneficios no utilizados."
+        ),
+        "Crítico": (
+            "Intervención inmediata y personalizada: llamada de agente de retención dedicado, "
+            "descuento temporal del 20% en cargos mensuales, upgrade gratuito de plan por 3 meses "
+            "y migración a contrato anual con incentivo económico."
+        )
     }
+
     return acciones.get(segmento, "Sin acción sugerida.")
 
 
@@ -125,7 +141,7 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
         df = df.drop(columns=["Churn"])
 
     # --------------------------------------------------------------------------
-    # 4. Codificación binaria igual que en Colab
+    # 4. Codificación binaria
     # --------------------------------------------------------------------------
 
     binary_cols = [
@@ -139,13 +155,17 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
         if col in df.columns:
             df[col] = df[col].map({"Yes": 1, "No": 0})
 
-    # En el notebook: Female -> 0, Male -> 1
+    # Codificación de género
     if "gender" in df.columns:
         df["gender"] = df["gender"].map({"Female": 0, "Male": 1})
 
-    # SeniorCitizen ya viene como 0/1, pero aseguramos formato numérico
+    # Asegurar SeniorCitizen como numérico
     if "SeniorCitizen" in df.columns:
-        df["SeniorCitizen"] = pd.to_numeric(df["SeniorCitizen"], errors="coerce").fillna(0).astype(int)
+        df["SeniorCitizen"] = (
+            pd.to_numeric(df["SeniorCitizen"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
 
     # --------------------------------------------------------------------------
     # 5. One-Hot Encoding para variables categóricas restantes
@@ -153,7 +173,7 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
 
     df = pd.get_dummies(df, drop_first=True)
 
-    # Convertir booleanos a enteros
+    # Convertir columnas booleanas a enteros
     bool_cols = df.select_dtypes(include="bool").columns
     df[bool_cols] = df[bool_cols].astype(int)
 
@@ -168,7 +188,6 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
     # --------------------------------------------------------------------------
 
     numeric_features = ["tenure", "MonthlyCharges", "TotalCharges"]
-
     cols_a_escalar = [col for col in numeric_features if col in df.columns]
 
     if len(cols_a_escalar) > 0:
@@ -253,109 +272,187 @@ if archivo is not None:
         st.stop()
 
     # --------------------------------------------------------------------------
-    # 5.1 Métricas principales
+    # 5.1 TABLA RESUMEN DE HALLAZGOS
     # --------------------------------------------------------------------------
 
     st.subheader("Resultados de predicción")
 
     total_clientes = len(resultados)
 
-    clientes_alto_critico = resultados[
-        resultados["Segmento_Riesgo"].isin(["Alto", "Crítico"])
-    ].shape[0]
+    clientes_bajo = resultados[resultados["Segmento_Riesgo"] == "Bajo"].shape[0]
+    clientes_medio = resultados[resultados["Segmento_Riesgo"] == "Medio"].shape[0]
+    clientes_alto = resultados[resultados["Segmento_Riesgo"] == "Alto"].shape[0]
+    clientes_critico = resultados[resultados["Segmento_Riesgo"] == "Crítico"].shape[0]
 
+    clientes_alto_critico = clientes_alto + clientes_critico
     probabilidad_promedio = resultados["Probabilidad_Churn"].mean()
 
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Clientes analizados", f"{total_clientes:,}")
-    col2.metric("Clientes alto/crítico", f"{clientes_alto_critico:,}")
-    col3.metric("Probabilidad promedio", f"{probabilidad_promedio:.2%}")
-
-    # --------------------------------------------------------------------------
-    # 5.2 Tabla de clientes priorizados
-    # --------------------------------------------------------------------------
-
-    st.markdown("### Tabla de clientes priorizados")
-
-    columnas_mostrar = [
-        "Probabilidad_Churn",
-        "Prediccion_Churn",
-        "Segmento_Riesgo",
-        "Accion_Sugerida"
-    ]
-
-    if "customerID" in resultados.columns:
-        columnas_mostrar = ["customerID"] + columnas_mostrar
-
-    if "Churn_Real" in resultados.columns:
-        columnas_mostrar.append("Churn_Real")
+    resumen_hallazgos = pd.DataFrame({
+        "Hallazgo": [
+            "Clientes analizados",
+            "Clientes en riesgo bajo",
+            "Clientes en riesgo medio",
+            "Clientes en riesgo medio-alto",
+            "Clientes en riesgo alto/crítico",
+            "Clientes prioritarios",
+            "Probabilidad promedio de churn"
+        ],
+        "Resultado": [
+            f"{total_clientes:,}",
+            f"{clientes_bajo:,}",
+            f"{clientes_medio:,}",
+            f"{clientes_alto:,}",
+            f"{clientes_critico:,}",
+            f"{clientes_alto_critico:,}",
+            f"{probabilidad_promedio:.2%}"
+        ],
+        "Interpretación": [
+            "Total de clientes evaluados por el modelo.",
+            "Clientes con baja probabilidad de abandonar el servicio.",
+            "Clientes que requieren seguimiento preventivo.",
+            "Clientes que conviene atender con campañas de retención semi-personalizadas.",
+            "Clientes con mayor urgencia de intervención comercial.",
+            "Clientes en riesgo medio-alto o alto/crítico que deben atenderse primero.",
+            "Riesgo promedio estimado en la base cargada."
+        ]
+    })
 
     st.dataframe(
-        resultados[columnas_mostrar].sort_values(
-            by="Probabilidad_Churn",
-            ascending=False
-        ),
-        use_container_width=True
+        resumen_hallazgos,
+        use_container_width=True,
+        hide_index=True
     )
 
     # --------------------------------------------------------------------------
-    # 5.3 Resumen visual
+    # 5.2 GRÁFICA ÚTIL: CLIENTES POR SEGMENTO
     # --------------------------------------------------------------------------
 
-    st.subheader("Resumen visual")
+    st.subheader("Distribución de clientes por segmento de riesgo")
 
-    col_graf1, col_graf2 = st.columns(2)
-
-    with col_graf1:
-        st.markdown("#### Clientes por segmento de riesgo")
-
-        orden_segmentos = ["Bajo", "Medio", "Alto", "Crítico"]
-
-        conteo_segmentos = (
-            resultados["Segmento_Riesgo"]
-            .value_counts()
-            .reindex(orden_segmentos)
-            .fillna(0)
-        )
-
-        st.bar_chart(conteo_segmentos)
-
-    with col_graf2:
-        st.markdown("#### Distribución de probabilidad de churn")
-
-        hist_data = pd.DataFrame({
-            "Probabilidad_Churn": resultados["Probabilidad_Churn"]
-        })
-
-        st.bar_chart(hist_data)
-
-    # --------------------------------------------------------------------------
-    # 5.4 Tabla resumen por segmento
-    # --------------------------------------------------------------------------
-
-    st.markdown("### Resumen por segmento de riesgo")
-
-    resumen_segmentos = (
-        resultados
-        .groupby("Segmento_Riesgo")
-        .agg(
-            Clientes=("Segmento_Riesgo", "count"),
-            Probabilidad_Promedio=("Probabilidad_Churn", "mean")
-        )
+    conteo_segmentos = (
+        resultados["Segmento_Riesgo"]
+        .value_counts()
         .reindex(["Bajo", "Medio", "Alto", "Crítico"])
         .fillna(0)
     )
 
-    resumen_segmentos["Probabilidad_Promedio"] = resumen_segmentos["Probabilidad_Promedio"].map(
-        lambda x: f"{x:.2%}"
-    )
-
-    st.dataframe(resumen_segmentos, use_container_width=True)
+    st.bar_chart(conteo_segmentos)
 
     # --------------------------------------------------------------------------
-    # 5.5 Descarga de resultados
+    # 5.3 TABLAS SEPARADAS POR SEGMENTO DE RIESGO
     # --------------------------------------------------------------------------
+
+    st.subheader("Clientes priorizados por segmento de riesgo")
+
+    st.markdown("""
+    Las siguientes secciones separan a los clientes por nivel de riesgo.  
+    Así se evita repetir la misma acción sugerida en cada fila y se facilita la priorización comercial.
+    """)
+
+    columnas_base = [
+        "Probabilidad_Churn",
+        "Prediccion_Churn"
+    ]
+
+    if "customerID" in resultados.columns:
+        columnas_base = ["customerID"] + columnas_base
+
+    if "Churn_Real" in resultados.columns:
+        columnas_base.append("Churn_Real")
+
+    segmentos_info = {
+        "Crítico": {
+            "titulo": "🔴 Riesgo Alto / Crítico",
+            "metodo": "Intervención inmediata y personalizada",
+            "acciones": [
+                "Llamada de agente de retención dedicado.",
+                "Descuento temporal del 20% en cargos mensuales.",
+                "Upgrade gratuito de plan por 3 meses.",
+                "Migración a contrato anual con incentivo económico."
+            ]
+        },
+        "Alto": {
+            "titulo": "🟠 Riesgo Medio-Alto",
+            "metodo": "Campaña de retención semi-personalizada",
+            "acciones": [
+                "Email/SMS con ofertas de servicios adicionales.",
+                "Beneficios de contratos anuales vs. mensuales.",
+                "1 mes gratis de OnlineSecurity o TechSupport.",
+                "Recordatorio de beneficios no utilizados."
+            ]
+        },
+        "Medio": {
+            "titulo": "🟡 Riesgo Medio",
+            "metodo": "Comunicación preventiva y engagement",
+            "acciones": [
+                "Newsletter con tips de uso del servicio.",
+                "Invitación a eventos y beneficios exclusivos.",
+                "Programa de puntos por antigüedad."
+            ]
+        },
+        "Bajo": {
+            "titulo": "🟢 Riesgo Bajo",
+            "metodo": "Fidelización y cross-selling",
+            "acciones": [
+                "Programa de referidos con incentivos.",
+                "Servicios premium a precio preferencial.",
+                "Reconocimiento de lealtad en aniversarios."
+            ]
+        }
+    }
+
+    orden_segmentos = ["Crítico", "Alto", "Medio", "Bajo"]
+
+    for segmento in orden_segmentos:
+
+        info = segmentos_info[segmento]
+
+        df_segmento = (
+            resultados[resultados["Segmento_Riesgo"] == segmento]
+            .sort_values(by="Probabilidad_Churn", ascending=False)
+        )
+
+        st.markdown(f"## {info['titulo']}")
+
+        col_a, col_b, col_c = st.columns(3)
+
+        col_a.metric("Clientes", f"{len(df_segmento):,}")
+
+        if len(df_segmento) > 0:
+            col_b.metric(
+                "Probabilidad promedio",
+                f"{df_segmento['Probabilidad_Churn'].mean():.2%}"
+            )
+            col_c.metric(
+                "Probabilidad máxima",
+                f"{df_segmento['Probabilidad_Churn'].max():.2%}"
+            )
+        else:
+            col_b.metric("Probabilidad promedio", "0.00%")
+            col_c.metric("Probabilidad máxima", "0.00%")
+
+        st.markdown(f"**Método:** {info['metodo']}")
+
+        st.markdown("**Acciones sugeridas:**")
+        for accion in info["acciones"]:
+            st.markdown(f"- {accion}")
+
+        if len(df_segmento) > 0:
+            st.dataframe(
+                df_segmento[columnas_base],
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No hay clientes en este segmento para la base cargada.")
+
+        st.markdown("---")
+
+    # --------------------------------------------------------------------------
+    # 5.4 DESCARGA DE RESULTADOS
+    # --------------------------------------------------------------------------
+
+    st.subheader("Descarga de resultados")
 
     csv_resultados = convertir_a_csv(resultados)
 
@@ -376,7 +473,7 @@ else:
     2. La app aplica el mismo preprocesamiento usado durante el entrenamiento.
     3. El modelo Random Forest calcula la probabilidad de churn.
     4. Cada cliente se clasifica en un segmento de riesgo.
-    5. Se sugiere una acción de retención.
+    5. Se sugieren acciones de retención por segmento.
     6. Se descargan los resultados para uso operativo.
     """)
 
