@@ -21,8 +21,9 @@ st.set_page_config(
 # 2. ESTILOS VISUALES
 # ==============================================================================
 
-st.markdown("""
-<style>
+st.markdown(
+    """
+    <style>
     .main-title {
         font-size: 42px;
         font-weight: 800;
@@ -37,10 +38,10 @@ st.markdown("""
     }
 
     .risk-card {
-        padding: 24px;
+        padding: 26px;
         border-radius: 18px;
         margin-top: 25px;
-        margin-bottom: 18px;
+        margin-bottom: 22px;
         border: 1px solid rgba(0,0,0,0.08);
         box-shadow: 0 4px 16px rgba(0,0,0,0.05);
     }
@@ -48,26 +49,21 @@ st.markdown("""
     .risk-title {
         font-size: 34px;
         font-weight: 800;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
     }
 
-    .risk-method {
-        font-size: 17px;
-        margin-bottom: 10px;
-        color: #111827;
-    }
-
-    .risk-actions {
-        font-size: 16px;
-        line-height: 1.7;
-        color: #1F2937;
+    .metric-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
     }
 
     .metric-box {
-        background: rgba(255,255,255,0.65);
+        background: rgba(255,255,255,0.75);
         padding: 18px;
         border-radius: 14px;
-        border: 1px solid rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.06);
         text-align: center;
     }
 
@@ -83,11 +79,25 @@ st.markdown("""
         color: #111827;
     }
 
+    .risk-method {
+        font-size: 17px;
+        color: #111827;
+        margin-top: 12px;
+        margin-bottom: 12px;
+    }
+
+    .risk-actions {
+        font-size: 16px;
+        line-height: 1.7;
+        color: #1F2937;
+        margin-bottom: 14px;
+    }
+
     .finance-box {
         padding: 18px;
         border-radius: 14px;
-        margin-top: 14px;
-        margin-bottom: 20px;
+        margin-top: 18px;
+        margin-bottom: 8px;
         border-left: 7px solid;
         font-size: 18px;
         font-weight: 700;
@@ -96,18 +106,27 @@ st.markdown("""
     .small-note {
         color: #6B7280;
         font-size: 14px;
+        margin-top: 6px;
     }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-st.markdown('<div class="main-title">📡 Predicción de Churn en Telecomunicaciones</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="main-title">📡 Predicción de Churn en Telecomunicaciones</div>',
+    unsafe_allow_html=True
+)
 
-st.markdown("""
-<div class="subtitle">
-Esta aplicación utiliza un modelo de <b>Random Forest</b> para estimar la probabilidad de que un cliente abandone el servicio.
-Permite cargar una base CSV, segmentar clientes por nivel de riesgo y proponer acciones de retención.
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="subtitle">
+    Esta aplicación utiliza un modelo de <b>Random Forest</b> para estimar la probabilidad de que un cliente abandone el servicio.
+    Permite cargar una base CSV, segmentar clientes por nivel de riesgo y proponer acciones de retención.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================================================================
 # 3. CARGA DEL MODELO Y OBJETOS NECESARIOS
@@ -138,9 +157,6 @@ except FileNotFoundError as e:
 # ==============================================================================
 
 def clasificar_riesgo(probabilidad):
-    """
-    Clasifica a cada cliente según su probabilidad estimada de churn.
-    """
     if probabilidad < 0.30:
         return "Bajo"
     elif probabilidad < 0.60:
@@ -152,11 +168,6 @@ def clasificar_riesgo(probabilidad):
 
 
 def asignar_accion(segmento):
-    """
-    Asigna acciones de retención según el nivel de riesgo.
-    Las acciones están basadas en la estrategia de retención de la presentación.
-    """
-
     acciones = {
         "Bajo": (
             "Fidelización y cross-selling: programa de referidos con incentivos, "
@@ -182,69 +193,34 @@ def asignar_accion(segmento):
 
 
 def formato_moneda(valor):
-    """
-    Da formato de moneda a valores financieros.
-    """
     return f"${valor:,.2f}"
 
 
 def preprocesar_datos(df_original, columnas_modelo, scaler):
-    """
-    Preprocesa una base nueva de clientes para que tenga la misma estructura
-    que los datos usados durante el entrenamiento del modelo en Colab.
-    """
-
     df = df_original.copy()
 
-    # --------------------------------------------------------------------------
-    # 1. Eliminar identificador si existe
-    # --------------------------------------------------------------------------
-
+    # Eliminar identificador si existe
     if "customerID" in df.columns:
         df = df.drop(columns=["customerID"])
 
-    # --------------------------------------------------------------------------
-    # 2. Convertir TotalCharges y MonthlyCharges a numérico
-    # --------------------------------------------------------------------------
+    # Convertir variables numéricas
+    for col in ["TotalCharges", "MonthlyCharges", "tenure"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    if "TotalCharges" in df.columns:
-        df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
+            if df[col].isna().all():
+                df[col] = df[col].fillna(0)
+            else:
+                df[col] = df[col].fillna(df[col].median())
 
-        if df["TotalCharges"].isna().all():
-            df["TotalCharges"] = df["TotalCharges"].fillna(0)
-        else:
-            df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
-
-    if "MonthlyCharges" in df.columns:
-        df["MonthlyCharges"] = pd.to_numeric(df["MonthlyCharges"], errors="coerce")
-
-        if df["MonthlyCharges"].isna().all():
-            df["MonthlyCharges"] = df["MonthlyCharges"].fillna(0)
-        else:
-            df["MonthlyCharges"] = df["MonthlyCharges"].fillna(df["MonthlyCharges"].median())
-
-    if "tenure" in df.columns:
-        df["tenure"] = pd.to_numeric(df["tenure"], errors="coerce")
-
-        if df["tenure"].isna().all():
-            df["tenure"] = df["tenure"].fillna(0)
-        else:
-            df["tenure"] = df["tenure"].fillna(df["tenure"].median())
-
-    # --------------------------------------------------------------------------
-    # 3. Guardar Churn real si viene en el archivo
-    # --------------------------------------------------------------------------
-
+    # Guardar Churn real si viene en el archivo
     churn_real = None
 
     if "Churn" in df.columns:
         churn_real = df["Churn"].map({"No": 0, "Yes": 1})
         df = df.drop(columns=["Churn"])
 
-    # --------------------------------------------------------------------------
-    # 4. Codificación binaria
-    # --------------------------------------------------------------------------
-
+    # Codificación binaria
     binary_cols = [
         "Partner",
         "Dependents",
@@ -260,7 +236,7 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
     if "gender" in df.columns:
         df["gender"] = df["gender"].map({"Female": 0, "Male": 1})
 
-    # Asegurar SeniorCitizen como numérico
+    # SeniorCitizen como numérico
     if "SeniorCitizen" in df.columns:
         df["SeniorCitizen"] = (
             pd.to_numeric(df["SeniorCitizen"], errors="coerce")
@@ -268,26 +244,17 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
             .astype(int)
         )
 
-    # --------------------------------------------------------------------------
-    # 5. One-Hot Encoding para variables categóricas restantes
-    # --------------------------------------------------------------------------
-
+    # One-Hot Encoding para variables categóricas restantes
     df = pd.get_dummies(df, drop_first=True)
 
-    # Convertir columnas booleanas a enteros
+    # Convertir booleanos a enteros
     bool_cols = df.select_dtypes(include="bool").columns
     df[bool_cols] = df[bool_cols].astype(int)
 
-    # --------------------------------------------------------------------------
-    # 6. Alinear columnas con las columnas del modelo
-    # --------------------------------------------------------------------------
-
+    # Alinear columnas con las columnas del modelo
     df = df.reindex(columns=columnas_modelo, fill_value=0)
 
-    # --------------------------------------------------------------------------
-    # 7. Aplicar StandardScaler a variables numéricas
-    # --------------------------------------------------------------------------
-
+    # Aplicar StandardScaler
     numeric_features = ["tenure", "MonthlyCharges", "TotalCharges"]
     cols_a_escalar = [col for col in numeric_features if col in df.columns]
 
@@ -298,10 +265,6 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
 
 
 def generar_predicciones(df_clientes):
-    """
-    Genera predicciones de churn para una base de clientes cargada por el usuario.
-    """
-
     X_nuevo, churn_real = preprocesar_datos(
         df_original=df_clientes,
         columnas_modelo=columnas_modelo,
@@ -313,7 +276,6 @@ def generar_predicciones(df_clientes):
 
     resultados = df_clientes.copy()
 
-    # Asegurar MonthlyCharges numérico en resultados para cálculos financieros
     if "MonthlyCharges" in resultados.columns:
         resultados["MonthlyCharges"] = pd.to_numeric(
             resultados["MonthlyCharges"],
@@ -332,17 +294,10 @@ def generar_predicciones(df_clientes):
 
 
 def convertir_a_csv(df):
-    """
-    Convierte un DataFrame a CSV descargable.
-    """
     return df.to_csv(index=False).encode("utf-8")
 
 
-def render_risk_section(segmento, info, df_segmento, columnas_base):
-    """
-    Renderiza una sección visual por segmento de riesgo.
-    """
-
+def render_risk_section(info, df_segmento, columnas_base):
     clientes = len(df_segmento)
 
     if clientes > 0:
@@ -357,52 +312,53 @@ def render_risk_section(segmento, info, df_segmento, columnas_base):
     else:
         representacion_financiera = 0
 
-    acciones_html = "".join([f"<li>{accion}</li>" for accion in info["acciones"]])
+    acciones_html = ""
+    for accion in info["acciones"]:
+        acciones_html += f"<li>{accion}</li>"
 
-    st.markdown(
-        f"""
-        <div class="risk-card" style="background:{info['bg']}; border-color:{info['border']};">
-            <div class="risk-title" style="color:{info['color']};">
-                {info['icon']} {info['titulo']}
-            </div>
+    card_html = f"""
+<div class="risk-card" style="background:{info['bg']}; border-color:{info['border']};">
+    <div class="risk-title" style="color:{info['color']};">
+        {info['icon']} {info['titulo']}
+    </div>
 
-            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:20px;">
-                <div class="metric-box">
-                    <div class="metric-label">Clientes</div>
-                    <div class="metric-value">{clientes:,}</div>
-                </div>
-                <div class="metric-box">
-                    <div class="metric-label">Probabilidad promedio</div>
-                    <div class="metric-value">{prob_promedio:.2%}</div>
-                </div>
-                <div class="metric-box">
-                    <div class="metric-label">Probabilidad máxima</div>
-                    <div class="metric-value">{prob_maxima:.2%}</div>
-                </div>
-            </div>
-
-            <div class="risk-method">
-                <b>Método:</b> {info['metodo']}
-            </div>
-
-            <div class="risk-actions">
-                <b>Acciones sugeridas:</b>
-                <ul>
-                    {acciones_html}
-                </ul>
-            </div>
-
-            <div class="finance-box" style="background:{info['finance_bg']}; border-left-color:{info['color']}; color:{info['color']};">
-                Representación financiera del grupo de {info['titulo'].lower()}: {formato_moneda(representacion_financiera)}
-            </div>
-
-            <div class="small-note">
-                La representación financiera corresponde a la suma de los cargos mensuales de los clientes clasificados en este segmento.
-            </div>
+    <div class="metric-row">
+        <div class="metric-box">
+            <div class="metric-label">Clientes</div>
+            <div class="metric-value">{clientes:,}</div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+        <div class="metric-box">
+            <div class="metric-label">Probabilidad promedio</div>
+            <div class="metric-value">{prob_promedio:.2%}</div>
+        </div>
+        <div class="metric-box">
+            <div class="metric-label">Probabilidad máxima</div>
+            <div class="metric-value">{prob_maxima:.2%}</div>
+        </div>
+    </div>
+
+    <div class="risk-method">
+        <b>Método:</b> {info['metodo']}
+    </div>
+
+    <div class="risk-actions">
+        <b>Acciones sugeridas:</b>
+        <ul>
+            {acciones_html}
+        </ul>
+    </div>
+
+    <div class="finance-box" style="background:{info['finance_bg']}; border-left-color:{info['color']}; color:{info['color']};">
+        Representación financiera del grupo de {info['titulo'].lower()}: {formato_moneda(representacion_financiera)}
+    </div>
+
+    <div class="small-note">
+        La representación financiera corresponde a la suma de los cargos mensuales de los clientes clasificados en este segmento.
+    </div>
+</div>
+"""
+
+    st.markdown(card_html, unsafe_allow_html=True)
 
     if clientes > 0:
         st.dataframe(
@@ -525,7 +481,7 @@ if archivo is not None:
     )
 
     # --------------------------------------------------------------------------
-    # 6.2 GRÁFICA ÚTIL: CLIENTES POR SEGMENTO
+    # 6.2 GRÁFICA: CLIENTES POR SEGMENTO
     # --------------------------------------------------------------------------
 
     st.subheader("Distribución de clientes por segmento de riesgo")
@@ -540,7 +496,7 @@ if archivo is not None:
     st.bar_chart(conteo_segmentos)
 
     # --------------------------------------------------------------------------
-    # 6.3 TABLAS SEPARADAS POR SEGMENTO DE RIESGO
+    # 6.3 TABLAS POR SEGMENTO
     # --------------------------------------------------------------------------
 
     st.subheader("Clientes priorizados por segmento de riesgo")
@@ -637,14 +593,13 @@ if archivo is not None:
         )
 
         render_risk_section(
-            segmento=segmento,
             info=info,
             df_segmento=df_segmento,
             columnas_base=columnas_base
         )
 
     # --------------------------------------------------------------------------
-    # 6.4 DESCARGA DE RESULTADOS
+    # 6.4 DESCARGA
     # --------------------------------------------------------------------------
 
     st.subheader("Descarga de resultados")
