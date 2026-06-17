@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import html
 
 # ==============================================================================
 # 1. CONFIGURACIÓN DE LA PÁGINA
@@ -21,9 +22,8 @@ st.set_page_config(
 # 2. ESTILOS VISUALES
 # ==============================================================================
 
-st.markdown(
-    """
-    <style>
+st.markdown("""
+<style>
     .main-title {
         font-size: 42px;
         font-weight: 800;
@@ -93,6 +93,11 @@ st.markdown(
         margin-bottom: 14px;
     }
 
+    .risk-actions ul {
+        margin-top: 8px;
+        margin-bottom: 8px;
+    }
+
     .finance-box {
         padding: 18px;
         border-radius: 14px;
@@ -108,10 +113,8 @@ st.markdown(
         font-size: 14px;
         margin-top: 6px;
     }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+</style>
+""", unsafe_allow_html=True)
 
 st.markdown(
     '<div class="main-title">📡 Predicción de Churn en Telecomunicaciones</div>',
@@ -119,12 +122,7 @@ st.markdown(
 )
 
 st.markdown(
-    """
-    <div class="subtitle">
-    Esta aplicación utiliza un modelo de <b>Random Forest</b> para estimar la probabilidad de que un cliente abandone el servicio.
-    Permite cargar una base CSV, segmentar clientes por nivel de riesgo y proponer acciones de retención.
-    </div>
-    """,
+    '<div class="subtitle">Esta aplicación utiliza un modelo de <b>Random Forest</b> para estimar la probabilidad de que un cliente abandone el servicio. Permite cargar una base CSV, segmentar clientes por nivel de riesgo y proponer acciones de retención.</div>',
     unsafe_allow_html=True
 )
 
@@ -312,51 +310,26 @@ def render_risk_section(info, df_segmento, columnas_base):
     else:
         representacion_financiera = 0
 
-    acciones_html = ""
-    for accion in info["acciones"]:
-        acciones_html += f"<li>{accion}</li>"
+    acciones_html = "".join(
+        [f"<li>{html.escape(accion)}</li>" for accion in info["acciones"]]
+    )
 
-    card_html = f"""
-<div class="risk-card" style="background:{info['bg']}; border-color:{info['border']};">
-    <div class="risk-title" style="color:{info['color']};">
-        {info['icon']} {info['titulo']}
-    </div>
-
-    <div class="metric-row">
-        <div class="metric-box">
-            <div class="metric-label">Clientes</div>
-            <div class="metric-value">{clientes:,}</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Probabilidad promedio</div>
-            <div class="metric-value">{prob_promedio:.2%}</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Probabilidad máxima</div>
-            <div class="metric-value">{prob_maxima:.2%}</div>
-        </div>
-    </div>
-
-    <div class="risk-method">
-        <b>Método:</b> {info['metodo']}
-    </div>
-
-    <div class="risk-actions">
-        <b>Acciones sugeridas:</b>
-        <ul>
-            {acciones_html}
-        </ul>
-    </div>
-
-    <div class="finance-box" style="background:{info['finance_bg']}; border-left-color:{info['color']}; color:{info['color']};">
-        Representación financiera del grupo de {info['titulo'].lower()}: {formato_moneda(representacion_financiera)}
-    </div>
-
-    <div class="small-note">
-        La representación financiera corresponde a la suma de los cargos mensuales de los clientes clasificados en este segmento.
-    </div>
-</div>
-"""
+    card_html = (
+        f'<div class="risk-card" style="background:{info["bg"]}; border-color:{info["border"]};">'
+        f'<div class="risk-title" style="color:{info["color"]};">{info["icon"]} {html.escape(info["titulo"])}</div>'
+        f'<div class="metric-row">'
+        f'<div class="metric-box"><div class="metric-label">Clientes</div><div class="metric-value">{clientes:,}</div></div>'
+        f'<div class="metric-box"><div class="metric-label">Probabilidad promedio</div><div class="metric-value">{prob_promedio:.2%}</div></div>'
+        f'<div class="metric-box"><div class="metric-label">Probabilidad máxima</div><div class="metric-value">{prob_maxima:.2%}</div></div>'
+        f'</div>'
+        f'<div class="risk-method"><b>Método:</b> {html.escape(info["metodo"])}</div>'
+        f'<div class="risk-actions"><b>Acciones sugeridas:</b><ul>{acciones_html}</ul></div>'
+        f'<div class="finance-box" style="background:{info["finance_bg"]}; border-left-color:{info["color"]}; color:{info["color"]};">'
+        f'Representación financiera del grupo de {html.escape(info["titulo"].lower())}: {formato_moneda(representacion_financiera)}'
+        f'</div>'
+        f'<div class="small-note">La representación financiera corresponde a la suma de los cargos mensuales de los clientes clasificados en este segmento.</div>'
+        f'</div>'
+    )
 
     st.markdown(card_html, unsafe_allow_html=True)
 
