@@ -17,22 +17,100 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("📡 Predicción de Churn en Telecomunicaciones")
+# ==============================================================================
+# 2. ESTILOS VISUALES
+# ==============================================================================
 
 st.markdown("""
-Esta aplicación utiliza un modelo de **Random Forest** para estimar la probabilidad
-de que un cliente abandone el servicio.
+<style>
+    .main-title {
+        font-size: 42px;
+        font-weight: 800;
+        color: #0B1F3A;
+        margin-bottom: 5px;
+    }
 
-El usuario puede cargar una base de clientes en formato CSV y la aplicación devuelve:
+    .subtitle {
+        font-size: 18px;
+        color: #374151;
+        margin-bottom: 25px;
+    }
 
-- Probabilidad de churn por cliente.
-- Segmento de riesgo.
-- Acciones sugeridas de retención.
-- Archivo descargable con resultados.
-""")
+    .risk-card {
+        padding: 24px;
+        border-radius: 18px;
+        margin-top: 25px;
+        margin-bottom: 18px;
+        border: 1px solid rgba(0,0,0,0.08);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+    }
+
+    .risk-title {
+        font-size: 34px;
+        font-weight: 800;
+        margin-bottom: 16px;
+    }
+
+    .risk-method {
+        font-size: 17px;
+        margin-bottom: 10px;
+        color: #111827;
+    }
+
+    .risk-actions {
+        font-size: 16px;
+        line-height: 1.7;
+        color: #1F2937;
+    }
+
+    .metric-box {
+        background: rgba(255,255,255,0.65);
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px solid rgba(0,0,0,0.05);
+        text-align: center;
+    }
+
+    .metric-label {
+        font-size: 14px;
+        color: #4B5563;
+        margin-bottom: 4px;
+    }
+
+    .metric-value {
+        font-size: 30px;
+        font-weight: 800;
+        color: #111827;
+    }
+
+    .finance-box {
+        padding: 18px;
+        border-radius: 14px;
+        margin-top: 14px;
+        margin-bottom: 20px;
+        border-left: 7px solid;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    .small-note {
+        color: #6B7280;
+        font-size: 14px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-title">📡 Predicción de Churn en Telecomunicaciones</div>', unsafe_allow_html=True)
+
+st.markdown("""
+<div class="subtitle">
+Esta aplicación utiliza un modelo de <b>Random Forest</b> para estimar la probabilidad de que un cliente abandone el servicio.
+Permite cargar una base CSV, segmentar clientes por nivel de riesgo y proponer acciones de retención.
+</div>
+""", unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. CARGA DEL MODELO Y OBJETOS NECESARIOS
+# 3. CARGA DEL MODELO Y OBJETOS NECESARIOS
 # ==============================================================================
 
 @st.cache_resource
@@ -56,7 +134,7 @@ except FileNotFoundError as e:
     st.stop()
 
 # ==============================================================================
-# 3. FUNCIONES AUXILIARES
+# 4. FUNCIONES AUXILIARES
 # ==============================================================================
 
 def clasificar_riesgo(probabilidad):
@@ -103,6 +181,13 @@ def asignar_accion(segmento):
     return acciones.get(segmento, "Sin acción sugerida.")
 
 
+def formato_moneda(valor):
+    """
+    Da formato de moneda a valores financieros.
+    """
+    return f"${valor:,.2f}"
+
+
 def preprocesar_datos(df_original, columnas_modelo, scaler):
     """
     Preprocesa una base nueva de clientes para que tenga la misma estructura
@@ -119,7 +204,7 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
         df = df.drop(columns=["customerID"])
 
     # --------------------------------------------------------------------------
-    # 2. Convertir TotalCharges a numérico
+    # 2. Convertir TotalCharges y MonthlyCharges a numérico
     # --------------------------------------------------------------------------
 
     if "TotalCharges" in df.columns:
@@ -129,6 +214,22 @@ def preprocesar_datos(df_original, columnas_modelo, scaler):
             df["TotalCharges"] = df["TotalCharges"].fillna(0)
         else:
             df["TotalCharges"] = df["TotalCharges"].fillna(df["TotalCharges"].median())
+
+    if "MonthlyCharges" in df.columns:
+        df["MonthlyCharges"] = pd.to_numeric(df["MonthlyCharges"], errors="coerce")
+
+        if df["MonthlyCharges"].isna().all():
+            df["MonthlyCharges"] = df["MonthlyCharges"].fillna(0)
+        else:
+            df["MonthlyCharges"] = df["MonthlyCharges"].fillna(df["MonthlyCharges"].median())
+
+    if "tenure" in df.columns:
+        df["tenure"] = pd.to_numeric(df["tenure"], errors="coerce")
+
+        if df["tenure"].isna().all():
+            df["tenure"] = df["tenure"].fillna(0)
+        else:
+            df["tenure"] = df["tenure"].fillna(df["tenure"].median())
 
     # --------------------------------------------------------------------------
     # 3. Guardar Churn real si viene en el archivo
@@ -212,6 +313,13 @@ def generar_predicciones(df_clientes):
 
     resultados = df_clientes.copy()
 
+    # Asegurar MonthlyCharges numérico en resultados para cálculos financieros
+    if "MonthlyCharges" in resultados.columns:
+        resultados["MonthlyCharges"] = pd.to_numeric(
+            resultados["MonthlyCharges"],
+            errors="coerce"
+        ).fillna(0)
+
     resultados["Probabilidad_Churn"] = probabilidades
     resultados["Prediccion_Churn"] = predicciones
     resultados["Segmento_Riesgo"] = resultados["Probabilidad_Churn"].apply(clasificar_riesgo)
@@ -230,8 +338,86 @@ def convertir_a_csv(df):
     return df.to_csv(index=False).encode("utf-8")
 
 
+def render_risk_section(segmento, info, df_segmento, columnas_base):
+    """
+    Renderiza una sección visual por segmento de riesgo.
+    """
+
+    clientes = len(df_segmento)
+
+    if clientes > 0:
+        prob_promedio = df_segmento["Probabilidad_Churn"].mean()
+        prob_maxima = df_segmento["Probabilidad_Churn"].max()
+    else:
+        prob_promedio = 0
+        prob_maxima = 0
+
+    if "MonthlyCharges" in df_segmento.columns:
+        representacion_financiera = df_segmento["MonthlyCharges"].sum()
+    else:
+        representacion_financiera = 0
+
+    acciones_html = "".join([f"<li>{accion}</li>" for accion in info["acciones"]])
+
+    st.markdown(
+        f"""
+        <div class="risk-card" style="background:{info['bg']}; border-color:{info['border']};">
+            <div class="risk-title" style="color:{info['color']};">
+                {info['icon']} {info['titulo']}
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:20px;">
+                <div class="metric-box">
+                    <div class="metric-label">Clientes</div>
+                    <div class="metric-value">{clientes:,}</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Probabilidad promedio</div>
+                    <div class="metric-value">{prob_promedio:.2%}</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Probabilidad máxima</div>
+                    <div class="metric-value">{prob_maxima:.2%}</div>
+                </div>
+            </div>
+
+            <div class="risk-method">
+                <b>Método:</b> {info['metodo']}
+            </div>
+
+            <div class="risk-actions">
+                <b>Acciones sugeridas:</b>
+                <ul>
+                    {acciones_html}
+                </ul>
+            </div>
+
+            <div class="finance-box" style="background:{info['finance_bg']}; border-left-color:{info['color']}; color:{info['color']};">
+                Representación financiera del grupo de {info['titulo'].lower()}: {formato_moneda(representacion_financiera)}
+            </div>
+
+            <div class="small-note">
+                La representación financiera corresponde a la suma de los cargos mensuales de los clientes clasificados en este segmento.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if clientes > 0:
+        st.dataframe(
+            df_segmento[columnas_base],
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No hay clientes en este segmento para la base cargada.")
+
+    st.markdown("---")
+
+
 # ==============================================================================
-# 4. CARGA DE ARCHIVO CSV
+# 5. CARGA DE ARCHIVO CSV
 # ==============================================================================
 
 st.sidebar.header("Carga de datos")
@@ -248,7 +434,7 @@ st.sidebar.info(
 )
 
 # ==============================================================================
-# 5. EJECUCIÓN PRINCIPAL DE LA APP
+# 6. EJECUCIÓN PRINCIPAL DE LA APP
 # ==============================================================================
 
 if archivo is not None:
@@ -272,7 +458,7 @@ if archivo is not None:
         st.stop()
 
     # --------------------------------------------------------------------------
-    # 5.1 TABLA RESUMEN DE HALLAZGOS
+    # 6.1 TABLA RESUMEN DE HALLAZGOS
     # --------------------------------------------------------------------------
 
     st.subheader("Resultados de predicción")
@@ -284,8 +470,17 @@ if archivo is not None:
     clientes_alto = resultados[resultados["Segmento_Riesgo"] == "Alto"].shape[0]
     clientes_critico = resultados[resultados["Segmento_Riesgo"] == "Crítico"].shape[0]
 
-    clientes_alto_critico = clientes_alto + clientes_critico
+    clientes_prioritarios = clientes_alto + clientes_critico
     probabilidad_promedio = resultados["Probabilidad_Churn"].mean()
+
+    if "MonthlyCharges" in resultados.columns:
+        representacion_total = resultados["MonthlyCharges"].sum()
+        representacion_prioritaria = resultados[
+            resultados["Segmento_Riesgo"].isin(["Alto", "Crítico"])
+        ]["MonthlyCharges"].sum()
+    else:
+        representacion_total = 0
+        representacion_prioritaria = 0
 
     resumen_hallazgos = pd.DataFrame({
         "Hallazgo": [
@@ -295,7 +490,9 @@ if archivo is not None:
             "Clientes en riesgo medio-alto",
             "Clientes en riesgo alto/crítico",
             "Clientes prioritarios",
-            "Probabilidad promedio de churn"
+            "Probabilidad promedio de churn",
+            "Representación financiera total mensual",
+            "Representación financiera prioritaria mensual"
         ],
         "Resultado": [
             f"{total_clientes:,}",
@@ -303,8 +500,10 @@ if archivo is not None:
             f"{clientes_medio:,}",
             f"{clientes_alto:,}",
             f"{clientes_critico:,}",
-            f"{clientes_alto_critico:,}",
-            f"{probabilidad_promedio:.2%}"
+            f"{clientes_prioritarios:,}",
+            f"{probabilidad_promedio:.2%}",
+            formato_moneda(representacion_total),
+            formato_moneda(representacion_prioritaria)
         ],
         "Interpretación": [
             "Total de clientes evaluados por el modelo.",
@@ -313,7 +512,9 @@ if archivo is not None:
             "Clientes que conviene atender con campañas de retención semi-personalizadas.",
             "Clientes con mayor urgencia de intervención comercial.",
             "Clientes en riesgo medio-alto o alto/crítico que deben atenderse primero.",
-            "Riesgo promedio estimado en la base cargada."
+            "Riesgo promedio estimado en la base cargada.",
+            "Suma de cargos mensuales de todos los clientes cargados.",
+            "Suma de cargos mensuales de los clientes que requieren mayor prioridad."
         ]
     })
 
@@ -324,7 +525,7 @@ if archivo is not None:
     )
 
     # --------------------------------------------------------------------------
-    # 5.2 GRÁFICA ÚTIL: CLIENTES POR SEGMENTO
+    # 6.2 GRÁFICA ÚTIL: CLIENTES POR SEGMENTO
     # --------------------------------------------------------------------------
 
     st.subheader("Distribución de clientes por segmento de riesgo")
@@ -339,30 +540,38 @@ if archivo is not None:
     st.bar_chart(conteo_segmentos)
 
     # --------------------------------------------------------------------------
-    # 5.3 TABLAS SEPARADAS POR SEGMENTO DE RIESGO
+    # 6.3 TABLAS SEPARADAS POR SEGMENTO DE RIESGO
     # --------------------------------------------------------------------------
 
     st.subheader("Clientes priorizados por segmento de riesgo")
 
     st.markdown("""
     Las siguientes secciones separan a los clientes por nivel de riesgo.  
-    Así se evita repetir la misma acción sugerida en cada fila y se facilita la priorización comercial.
+    Cada bloque incluye el método de retención, las acciones sugeridas, la tabla de clientes y su representación financiera mensual.
     """)
 
-    columnas_base = [
-        "Probabilidad_Churn",
-        "Prediccion_Churn"
-    ]
+    columnas_base = []
 
     if "customerID" in resultados.columns:
-        columnas_base = ["customerID"] + columnas_base
+        columnas_base.append("customerID")
+
+    columnas_base.append("Probabilidad_Churn")
+    columnas_base.append("Prediccion_Churn")
+
+    if "MonthlyCharges" in resultados.columns:
+        columnas_base.append("MonthlyCharges")
 
     if "Churn_Real" in resultados.columns:
         columnas_base.append("Churn_Real")
 
     segmentos_info = {
         "Crítico": {
-            "titulo": "🔴 Riesgo Alto / Crítico",
+            "titulo": "Riesgo Alto / Crítico",
+            "icon": "🔴",
+            "color": "#E84855",
+            "bg": "#FFF1F2",
+            "border": "#FDA4AF",
+            "finance_bg": "#FFE4E6",
             "metodo": "Intervención inmediata y personalizada",
             "acciones": [
                 "Llamada de agente de retención dedicado.",
@@ -372,7 +581,12 @@ if archivo is not None:
             ]
         },
         "Alto": {
-            "titulo": "🟠 Riesgo Medio-Alto",
+            "titulo": "Riesgo Medio-Alto",
+            "icon": "🟠",
+            "color": "#F97316",
+            "bg": "#FFF7ED",
+            "border": "#FDBA74",
+            "finance_bg": "#FFEDD5",
             "metodo": "Campaña de retención semi-personalizada",
             "acciones": [
                 "Email/SMS con ofertas de servicios adicionales.",
@@ -382,7 +596,12 @@ if archivo is not None:
             ]
         },
         "Medio": {
-            "titulo": "🟡 Riesgo Medio",
+            "titulo": "Riesgo Medio",
+            "icon": "🟡",
+            "color": "#D97706",
+            "bg": "#FFFBEB",
+            "border": "#FCD34D",
+            "finance_bg": "#FEF3C7",
             "metodo": "Comunicación preventiva y engagement",
             "acciones": [
                 "Newsletter con tips de uso del servicio.",
@@ -391,7 +610,12 @@ if archivo is not None:
             ]
         },
         "Bajo": {
-            "titulo": "🟢 Riesgo Bajo",
+            "titulo": "Riesgo Bajo",
+            "icon": "🟢",
+            "color": "#059669",
+            "bg": "#ECFDF5",
+            "border": "#6EE7B7",
+            "finance_bg": "#D1FAE5",
             "metodo": "Fidelización y cross-selling",
             "acciones": [
                 "Programa de referidos con incentivos.",
@@ -412,44 +636,15 @@ if archivo is not None:
             .sort_values(by="Probabilidad_Churn", ascending=False)
         )
 
-        st.markdown(f"## {info['titulo']}")
-
-        col_a, col_b, col_c = st.columns(3)
-
-        col_a.metric("Clientes", f"{len(df_segmento):,}")
-
-        if len(df_segmento) > 0:
-            col_b.metric(
-                "Probabilidad promedio",
-                f"{df_segmento['Probabilidad_Churn'].mean():.2%}"
-            )
-            col_c.metric(
-                "Probabilidad máxima",
-                f"{df_segmento['Probabilidad_Churn'].max():.2%}"
-            )
-        else:
-            col_b.metric("Probabilidad promedio", "0.00%")
-            col_c.metric("Probabilidad máxima", "0.00%")
-
-        st.markdown(f"**Método:** {info['metodo']}")
-
-        st.markdown("**Acciones sugeridas:**")
-        for accion in info["acciones"]:
-            st.markdown(f"- {accion}")
-
-        if len(df_segmento) > 0:
-            st.dataframe(
-                df_segmento[columnas_base],
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No hay clientes en este segmento para la base cargada.")
-
-        st.markdown("---")
+        render_risk_section(
+            segmento=segmento,
+            info=info,
+            df_segmento=df_segmento,
+            columnas_base=columnas_base
+        )
 
     # --------------------------------------------------------------------------
-    # 5.4 DESCARGA DE RESULTADOS
+    # 6.4 DESCARGA DE RESULTADOS
     # --------------------------------------------------------------------------
 
     st.subheader("Descarga de resultados")
@@ -474,7 +669,8 @@ else:
     3. El modelo Random Forest calcula la probabilidad de churn.
     4. Cada cliente se clasifica en un segmento de riesgo.
     5. Se sugieren acciones de retención por segmento.
-    6. Se descargan los resultados para uso operativo.
+    6. Se calcula la representación financiera mensual por grupo de riesgo.
+    7. Se descargan los resultados para uso operativo.
     """)
 
     st.markdown("""
